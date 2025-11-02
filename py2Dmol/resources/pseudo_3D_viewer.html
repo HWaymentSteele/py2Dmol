@@ -1269,9 +1269,9 @@
                 
                 // Add sidechain bonds for aromatic residues (TYR, PHE, HIS, TRP)
                 const aromaticResidues = ['TYR', 'PHE', 'HIS', 'TRP'];
-                const sidechainBondCutoff = 2.0; // Angstroms - typical for covalent bonds
+                const sidechainBondCutoff = 1.6; // Angstroms - typical for covalent bonds
                 const sidechainBondCutoffSq = sidechainBondCutoff * sidechainBondCutoff;
-                const backboneSidechainCutoff = 2.5; // Slightly larger for backbone-sidechain connections
+                const backboneSidechainCutoff = 1.7; // Slightly larger for backbone-sidechain connections
                 const backboneSidechainCutoffSq = backboneSidechainCutoff * backboneSidechainCutoff;
                 
                 // Group atoms by residue (chain + residue number)
