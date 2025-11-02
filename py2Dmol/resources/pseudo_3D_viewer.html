@@ -1269,9 +1269,9 @@
                 
                 // Add sidechain bonds for aromatic residues (TYR, PHE, HIS, TRP)
                 const aromaticResidues = ['TYR', 'PHE', 'HIS', 'TRP'];
-                const sidechainBondCutoff = 1.5; // Angstroms - typical for covalent bonds
+                const sidechainBondCutoff = 1.4; 
                 const sidechainBondCutoffSq = sidechainBondCutoff * sidechainBondCutoff;
-                const backboneSidechainCutoff = 1.6; // Slightly larger for backbone-sidechain connections
+                const backboneSidechainCutoff = 1.4; 
                 const backboneSidechainCutoffSq = backboneSidechainCutoff * backboneSidechainCutoff;
                 
                 // Group atoms by residue (chain + residue number)
@@ -1293,7 +1293,7 @@
                                     // Check distance to any atom in the group
                                     for (const atomIdx of group.atoms) {
                                         const distSq = this.coords[i].distanceToSq(this.coords[atomIdx]);
-                                        if (distSq < 20.0) { // Within ~4.5 Angstroms - same residue
+                                        if (distSq < 15.0) { 
                                             group.atoms.push(i);
                                             foundGroup = true;
                                             break;
