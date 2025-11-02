@@ -1271,7 +1271,7 @@
                 const aromaticResidues = ['TYR', 'PHE', 'HIS', 'TRP'];
                 const sidechainBondCutoff = 1.4; 
                 const sidechainBondCutoffSq = sidechainBondCutoff * sidechainBondCutoff;
-                const backboneSidechainCutoff = 1.4; 
+                const backboneSidechainCutoff = 1.6; 
                 const backboneSidechainCutoffSq = backboneSidechainCutoff * backboneSidechainCutoff;
                 
                 // Group atoms by residue (chain + residue number)
@@ -1362,7 +1362,9 @@
                         for (let j = i + 1; j < sidechainAtoms.length; j++) {
                             const idx1 = sidechainAtoms[i];
                             const idx2 = sidechainAtoms[j];
-                            const distSq = this.coords[idx1].distanceToSq(this.coords[idx2]);
+                            const start = this.coords[idx1];
+                            const end = this.coords[idx2];
+                            const distSq = start.distanceToSq(end);
                             
                             if (distSq < sidechainBondCutoffSq) {
                                 this.segmentIndices.push({
