@@ -1325,6 +1325,9 @@
                     const backboneAtoms = atoms.filter(i => this.atomTypes[i] === 'P');
                     const sidechainAtoms = atoms.filter(i => this.atomTypes[i] === 'S');
                     
+                    // Get the colorIndex from the backbone atom for this residue
+                    const backboneColorIndex = backboneAtoms.length > 0 ? this.perChainIndices[backboneAtoms[0]] : 0;
+                    
                     // Connect backbone to nearest sidechain atom
                     if (backboneAtoms.length > 0 && sidechainAtoms.length > 0) {
                         for (const bbIdx of backboneAtoms) {
@@ -1344,7 +1347,7 @@
                                 this.segmentIndices.push({
                                     idx1: bbIdx,
                                     idx2: closestScIdx,
-                                    colorIndex: this.perChainIndices[bbIdx],
+                                    colorIndex: backboneColorIndex,  // Use backbone's colorIndex
                                     origIndex: bbIdx,
                                     chainId: group.chain,
                                     type: 'S',
@@ -1365,7 +1368,7 @@
                                 this.segmentIndices.push({
                                     idx1: idx1,
                                     idx2: idx2,
-                                    colorIndex: this.perChainIndices[idx1],
+                                    colorIndex: backboneColorIndex,  // Use backbone's colorIndex
                                     origIndex: idx1,
                                     chainId: group.chain,
                                     type: 'S',
