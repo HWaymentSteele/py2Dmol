@@ -19,6 +19,15 @@ import uuid
 import os
 import urllib.request
 
+# Aromatic residues and their sidechain atoms for visualization
+AROMATIC_RESIDUES = ['TYR', 'PHE', 'HIS', 'TRP']
+SIDECHAIN_ATOMS = {
+    'TYR': ['CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ', 'OH'],
+    'PHE': ['CB', 'CG', 'CD1', 'CD2', 'CE1', 'CE2', 'CZ'],
+    'HIS': ['CB', 'CG', 'ND1', 'CD2', 'CE1', 'NE2'],
+    'TRP': ['CB', 'CG', 'CD1', 'CD2', 'NE1', 'CE2', 'CE3', 'CZ2', 'CZ3', 'CH2']
+}
+
 def kabsch(a, b, return_v=False):
   """Computes the optimal rotation matrix for aligning a to b."""
   ab = a.swapaxes(-1, -2) @ b
@@ -73,6 +82,7 @@ class view:
         self._plddts = None
         self._chains = None
         self._atom_types = None
+        self._res_names = None  # NEW: Store residue names for sidechains
         self._pae = None # Store PAE matrix for the current frame
 
     def _get_data_dict(self):
@@ -82,11 +92,12 @@ class view:
             "plddts": self._plddts.tolist(),
             "chains": list(self._chains),
             "atom_types": list(self._atom_types),
+            "res_names": list(self._res_names) if self._res_names is not None else ["UNK"] * len(self._coords),  # NEW
             "pae": self._pae.tolist() if self._pae is not None else None
         }
         return payload
 
-    def _update(self, coords, plddts=None, chains=None, atom_types=None, pae=None, align=True):
+    def _update(self, coords, plddts=None, chains=None, atom_types=None, res_names=None, pae=None, align=True):
       """Updates the internal state with new data, aligning coords."""
       if self._coords is None:
         self._coords = coords
@@ -118,8 +129,14 @@ class view:
           self._atom_types = atom_types
       elif self._atom_types is None or len(self._atom_types) != n_atoms:
           self._atom_types = ["P"] * n_atoms
+      
+      # 4. Handle Residue Names (NEW)
+      if res_names is not None:
+          self._res_names = res_names
+      elif self._res_names is None or len(self._res_names) != n_atoms:
+          self._res_names = ["UNK"] * n_atoms
           
-      # 4. Handle PAE
+      # 5. Handle PAE
       self._pae = pae # Store PAE matrix (or None)
 
       # Ensure all arrays have the same length as coords (final safety check)
@@ -132,6 +149,9 @@ class view:
       if len(self._atom_types) != n_atoms:
           print(f"Warning: Atom types length mismatch. Resetting to default.")
           self._atom_types = ["P"] * n_atoms
+      if len(self._res_names) != n_atoms:
+          print(f"Warning: Residue names length mismatch. Resetting to default.")
+          self._res_names = ["UNK"] * n_atoms
 
     def _send_message(self, message_dict):
         """Robustly send a message to the viewer, queuing if not ready."""
@@ -417,7 +437,7 @@ class view:
                 "name": object_name
             })
     
-    def add(self, coords, plddts=None, chains=None, atom_types=None, pae=None,
+    def add(self, coords, plddts=None, chains=None, atom_types=None, res_names=None, pae=None,
             new_obj=False, object_name=None, align=True):
         """
         Adds a new *frame* of data to the viewer.
@@ -428,14 +448,15 @@ class view:
             coords (np.array): Nx3 array of coordinates.
             plddts (np.array, optional): N-length array of pLDDT scores.
             chains (list, optional): N-length list of chain identifiers.
-            atom_types (list, optional): N-length list of atom types ('P', 'D', 'R', 'L').
+            atom_types (list, optional): N-length list of atom types ('P', 'D', 'R', 'L', 'S').
+            res_names (list, optional): N-length list of residue names (e.g., 'TYR', 'PHE').
             pae (np.array, optional): LxL PAE matrix.
             new_obj (bool, optional): If True, starts a new object. Defaults to False.
             object_name (str, optional): Name for the new object.
         """
         
         # --- Step 1: Update Python-side alignment state ---
-        self._update(coords, plddts, chains, atom_types, pae, align=align) # This handles defaults
+        self._update(coords, plddts, chains, atom_types, res_names, pae, align=align) # This handles defaults
         data_dict = self._get_data_dict() # This reads the full, correct data
 
         # --- Step 2: Handle object creation ---
@@ -530,7 +551,7 @@ class view:
              # This can happen if biounit fails but structure had no models
              
         for model in models_to_process:
-            coords, plddts, atom_chains, atom_types = self._parse_model(model, chains, ignore_ligands=ignore_ligands)
+            coords, plddts, atom_chains, atom_types, res_names = self._parse_model(model, chains, ignore_ligands=ignore_ligands)
 
             if coords:
                 coords_np = np.array(coords)
@@ -544,7 +565,7 @@ class view:
                 pae_to_add = pae if is_first_model else None
 
                 # Call add() - this will handle batch vs. live
-                self.add(coords_np, plddts_np, atom_chains, atom_types,
+                self.add(coords_np, plddts_np, atom_chains, atom_types, res_names,
                     pae=pae_to_add,
                     new_obj=False, # We already handled new_obj
                     object_name=current_obj_name, # Add to the same object
@@ -553,11 +574,12 @@ class view:
                 is_first_model = False
 
     def _parse_model(self, model, chains_filter, ignore_ligands=False):
-        """Helper function to parse a gemmi.Model object."""
+        """Helper function to parse a gemmi.Model object, including aromatic sidechains."""
         coords = []
         plddts = []
         atom_chains = []
         atom_types = []
+        res_names = []  # NEW: Track residue names
 
         for chain in model:
             if chains_filter is None or chain.name in chains_filter:
@@ -570,12 +592,26 @@ class view:
                     is_nucleic = residue_info.is_nucleic_acid()
 
                     if is_protein:
+                        # Add backbone CA atom
                         if 'CA' in residue:
-                            atom = residue['CA'][0]
-                            coords.append(atom.pos.tolist())
-                            plddts.append(atom.b_iso)
+                            ca_atom = residue['CA'][0]
+                            coords.append(ca_atom.pos.tolist())
+                            plddts.append(ca_atom.b_iso)
                             atom_chains.append(chain.name)
                             atom_types.append('P')
+                            res_names.append(residue.name)
+                        
+                        # Add sidechain atoms for aromatic residues
+                        if residue.name in AROMATIC_RESIDUES:
+                            sidechain_atom_names = SIDECHAIN_ATOMS[residue.name]
+                            for atom_name in sidechain_atom_names:
+                                if atom_name in residue:
+                                    atom = residue[atom_name][0]  # Get first atom with this name
+                                    coords.append(atom.pos.tolist())
+                                    plddts.append(atom.b_iso)
+                                    atom_chains.append(chain.name)
+                                    atom_types.append('S')  # 'S' for sidechain
+                                    res_names.append(residue.name)
                             
                     elif is_nucleic:
                         c4_atom = None
@@ -596,6 +632,7 @@ class view:
                                 atom_types.append('D')
                             else:
                                 atom_types.append('R') # Default to RNA
+                            res_names.append(residue.name)
                                 
                     else:
                         # Ligand: use all heavy atoms
@@ -606,7 +643,9 @@ class view:
                                     plddts.append(atom.b_iso)
                                     atom_chains.append(chain.name)
                                     atom_types.append('L')
-        return coords, plddts, atom_chains, atom_types
+                                    res_names.append(residue.name)
+        
+        return coords, plddts, atom_chains, atom_types, res_names
 
     def _get_filepath_from_pdb_id(self, pdb_id):
         """
