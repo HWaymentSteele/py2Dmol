@@ -580,6 +580,13 @@ class view:
         atom_chains = []
         atom_types = []
         res_names = []  # NEW: Track residue names
+        
+        # Store sidechain atoms separately to add them after backbone
+        sidechain_coords = []
+        sidechain_plddts = []
+        sidechain_chains = []
+        sidechain_types = []
+        sidechain_resnames = []
 
         for chain in model:
             if chains_filter is None or chain.name in chains_filter:
@@ -601,17 +608,17 @@ class view:
                             atom_types.append('P')
                             res_names.append(residue.name)
                         
-                        # Add sidechain atoms for aromatic residues
+                        # Collect sidechain atoms for aromatic residues (add later)
                         if residue.name in AROMATIC_RESIDUES:
                             sidechain_atom_names = SIDECHAIN_ATOMS[residue.name]
                             for atom_name in sidechain_atom_names:
                                 if atom_name in residue:
                                     atom = residue[atom_name][0]  # Get first atom with this name
-                                    coords.append(atom.pos.tolist())
-                                    plddts.append(atom.b_iso)
-                                    atom_chains.append(chain.name)
-                                    atom_types.append('S')  # 'S' for sidechain
-                                    res_names.append(residue.name)
+                                    sidechain_coords.append(atom.pos.tolist())
+                                    sidechain_plddts.append(atom.b_iso)
+                                    sidechain_chains.append(chain.name)
+                                    sidechain_types.append('S')  # 'S' for sidechain
+                                    sidechain_resnames.append(residue.name)
                             
                     elif is_nucleic:
                         c4_atom = None
@@ -644,6 +651,13 @@ class view:
                                     atom_chains.append(chain.name)
                                     atom_types.append('L')
                                     res_names.append(residue.name)
+        
+        # Now append all sidechain atoms after backbone atoms
+        coords.extend(sidechain_coords)
+        plddts.extend(sidechain_plddts)
+        atom_chains.extend(sidechain_chains)
+        atom_types.extend(sidechain_types)
+        res_names.extend(sidechain_resnames)
         
         return coords, plddts, atom_chains, atom_types, res_names
 
