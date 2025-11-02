@@ -428,6 +428,7 @@
                 this.plddts = [];
                 this.chains = [];
                 this.atomTypes = [];
+                this.resNames = []; // Residue names (e.g., 'TYR', 'PHE', 'HIS', 'TRP')
                 
                 // Viewer state
                 this.colorMode = config.color; // Set initial color from config
@@ -1075,18 +1076,20 @@
                         const plddts = data.plddts || [];
                         const chains = data.chains || [];
                         const atomTypes = data.atom_types || [];
-                        this.setCoords(coords, plddts, chains, atomTypes);
+                        const resNames = data.res_names || []; // Added residue names
+                        this.setCoords(coords, plddts, chains, atomTypes, resNames);
                     }
                 } catch (e) {
                     console.error("Failed to load data into renderer:", e);
                 }
             }
 
-            setCoords(coords, plddts = [], chains = [], atomTypes = []) {
+            setCoords(coords, plddts = [], chains = [], atomTypes = [], resNames = []) {
                 this.coords = coords;
                 this.plddts = plddts;
                 this.chains = chains;
                 this.atomTypes = atomTypes;
+                this.resNames = resNames;
                 
                 // "auto" logic:
                 // Always calculate what 'auto' *should* be
@@ -1103,10 +1106,11 @@
                 if (this.plddts.length !== n) { this.plddts = Array(n).fill(50.0); }
                 if (this.chains.length !== n) { this.chains = Array(n).fill('A'); }
                 if (this.atomTypes.length !== n) { this.atomTypes = Array(n).fill('P'); }
+                if (this.resNames.length !== n) { this.resNames = Array(n).fill('UNK'); }
                 
                 // Map polymer atoms to residue indices for PAE selection
                 this.polymerAtomIndices = [];
-                const isPolymer = (type) => (type === 'P' || type === 'D' || type === 'R');
+                const isPolymer = (type) => (type === 'P' || type === 'D' || type === 'R' || type === 'S');
                 for (let i = 0; i < n; i++) {
                     if (isPolymer(this.atomTypes[i])) {
                         this.polymerAtomIndices.push(i);
@@ -1259,6 +1263,115 @@
                                  type: 'L',
                                  len: Math.sqrt(distSq)
                             });
+                        }
+                    }
+                }
+                
+                // Add sidechain bonds for aromatic residues (TYR, PHE, HIS, TRP)
+                const aromaticResidues = ['TYR', 'PHE', 'HIS', 'TRP'];
+                const sidechainBondCutoff = 2.0; // Angstroms - typical for covalent bonds
+                const sidechainBondCutoffSq = sidechainBondCutoff * sidechainBondCutoff;
+                const backboneSidechainCutoff = 2.5; // Slightly larger for backbone-sidechain connections
+                const backboneSidechainCutoffSq = backboneSidechainCutoff * backboneSidechainCutoff;
+                
+                // Group atoms by residue (chain + residue number)
+                const residueGroups = {};
+                for (let i = 0; i < n; i++) {
+                    if (this.atomTypes[i] === 'S' || this.atomTypes[i] === 'P') {
+                        const resName = this.resNames[i] || 'UNK';
+                        const chainId = this.chains[i] || 'A';
+                        
+                        // Only process aromatic residues
+                        if (aromaticResidues.includes(resName)) {
+                            // Create a unique key for each residue (chain + approximate position)
+                            // Group atoms that are close together
+                            let foundGroup = false;
+                            for (const key in residueGroups) {
+                                const group = residueGroups[key];
+                                // Check if this atom belongs to this group
+                                if (group.chain === chainId && group.resName === resName) {
+                                    // Check distance to any atom in the group
+                                    for (const atomIdx of group.atoms) {
+                                        const distSq = this.coords[i].distanceToSq(this.coords[atomIdx]);
+                                        if (distSq < 20.0) { // Within ~4.5 Angstroms - same residue
+                                            group.atoms.push(i);
+                                            foundGroup = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (foundGroup) break;
+                            }
+                            
+                            if (!foundGroup) {
+                                // Create new group
+                                const key = `${chainId}_${resName}_${i}`;
+                                residueGroups[key] = {
+                                    chain: chainId,
+                                    resName: resName,
+                                    atoms: [i]
+                                };
+                            }
+                        }
+                    }
+                }
+                
+                // Generate bonds within each aromatic residue group
+                for (const key in residueGroups) {
+                    const group = residueGroups[key];
+                    const atoms = group.atoms;
+                    
+                    // Separate backbone and sidechain atoms
+                    const backboneAtoms = atoms.filter(i => this.atomTypes[i] === 'P');
+                    const sidechainAtoms = atoms.filter(i => this.atomTypes[i] === 'S');
+                    
+                    // Connect backbone to nearest sidechain atom
+                    if (backboneAtoms.length > 0 && sidechainAtoms.length > 0) {
+                        for (const bbIdx of backboneAtoms) {
+                            // Find closest sidechain atom
+                            let minDistSq = Infinity;
+                            let closestScIdx = -1;
+                            for (const scIdx of sidechainAtoms) {
+                                const distSq = this.coords[bbIdx].distanceToSq(this.coords[scIdx]);
+                                if (distSq < minDistSq) {
+                                    minDistSq = distSq;
+                                    closestScIdx = scIdx;
+                                }
+                            }
+                            
+                            // Add bond if within cutoff
+                            if (closestScIdx !== -1 && minDistSq < backboneSidechainCutoffSq) {
+                                this.segmentIndices.push({
+                                    idx1: bbIdx,
+                                    idx2: closestScIdx,
+                                    colorIndex: this.perChainIndices[bbIdx],
+                                    origIndex: bbIdx,
+                                    chainId: group.chain,
+                                    type: 'S',
+                                    len: Math.sqrt(minDistSq)
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Connect sidechain atoms to each other
+                    for (let i = 0; i < sidechainAtoms.length; i++) {
+                        for (let j = i + 1; j < sidechainAtoms.length; j++) {
+                            const idx1 = sidechainAtoms[i];
+                            const idx2 = sidechainAtoms[j];
+                            const distSq = this.coords[idx1].distanceToSq(this.coords[idx2]);
+                            
+                            if (distSq < sidechainBondCutoffSq) {
+                                this.segmentIndices.push({
+                                    idx1: idx1,
+                                    idx2: idx2,
+                                    colorIndex: this.perChainIndices[idx1],
+                                    origIndex: idx1,
+                                    chainId: group.chain,
+                                    type: 'S',
+                                    len: Math.sqrt(distSq)
+                                });
+                            }
                         }
                     }
                 }
@@ -1693,6 +1806,8 @@
                             widthMultiplier = 0.4;
                         } else if (type === 'D' || type === 'R') {
                             widthMultiplier = 1.6;
+                        } else if (type === 'S') {
+                            widthMultiplier = 0.6; // Thinner for sidechains
                         }
                         const currentLineWidth = baseLineWidthPixels * widthMultiplier;
                         const totalOutlineWidth = currentLineWidth + (2.0 * 2);
@@ -1753,6 +1868,8 @@
                             widthMultiplier = 0.4;
                         } else if (type === 'D' || type === 'R') {
                             widthMultiplier = 1.6;
+                        } else if (type === 'S') {
+                            widthMultiplier = 0.6; // Thinner for sidechains
                         }
                         const currentLineWidth = baseLineWidthPixels * widthMultiplier;
 
