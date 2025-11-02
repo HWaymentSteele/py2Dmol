@@ -1,5 +1,7 @@
 # py2Dmol
 
+Hannah's fork to also show aromatic sidechains
+
 A Python library for visualizing protein, DNA, and RNA structures in 2D, designed for use in Google Colab and Jupyter environments.
 
 <img width="462" height="349" alt="image" src="https://github.com/user-attachments/assets/3b52d584-1d7e-45cc-a620-77377f0a0c01" />
