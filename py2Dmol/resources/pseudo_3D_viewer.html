@@ -1358,25 +1358,25 @@
                     }
                     
                     // Connect sidechain atoms to each other
-                    for (let i = 0; i < sidechainAtoms.length; i++) {
-                        for (let j = i + 1; j < sidechainAtoms.length; j++) {
-                            const idx1 = sidechainAtoms[i];
-                            const idx2 = sidechainAtoms[j];
-                            const distSq = this.coords[idx1].distanceToSq(this.coords[idx2]);
+                    // for (let i = 0; i < sidechainAtoms.length; i++) {
+                    //     for (let j = i + 1; j < sidechainAtoms.length; j++) {
+                    //         const idx1 = sidechainAtoms[i];
+                    //         const idx2 = sidechainAtoms[j];
+                    //         const distSq = this.coords[idx1].distanceToSq(this.coords[idx2]);
                             
-                            if (distSq < sidechainBondCutoffSq) {
-                                this.segmentIndices.push({
-                                    idx1: idx1,
-                                    idx2: idx2,
-                                    colorIndex: backboneColorIndex,  // Use backbone's colorIndex
-                                    origIndex: idx1,
-                                    chainId: group.chain,
-                                    type: 'S',
-                                    len: Math.sqrt(distSq)
-                                });
-                            }
-                        }
-                    }
+                    //         if (distSq < sidechainBondCutoffSq) {
+                    //             this.segmentIndices.push({
+                    //                 idx1: idx1,
+                    //                 idx2: idx2,
+                    //                 colorIndex: backboneColorIndex,  // Use backbone's colorIndex
+                    //                 origIndex: idx1,
+                    //                 chainId: group.chain,
+                    //                 type: 'S',
+                    //                 len: Math.sqrt(distSq)
+                    //             });
+                    //         }
+                    //     }
+                    // }
                 }
                 
                 // Pre-allocate segData array
